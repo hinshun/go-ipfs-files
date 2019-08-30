@@ -2,6 +2,7 @@ package files
 
 import (
 	"archive/tar"
+	"context"
 	"io"
 	"testing"
 )
@@ -23,9 +24,10 @@ func TestTarWriter(t *testing.T) {
 	}
 	tr := tar.NewReader(pr)
 
+	ctx := context.Background()
 	go func() {
 		defer tw.Close()
-		if err := tw.WriteFile(tf, ""); err != nil {
+		if err := tw.WriteFile(ctx, tf, ""); err != nil {
 			t.Fatal(err)
 		}
 	}()

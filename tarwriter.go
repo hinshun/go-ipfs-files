@@ -2,10 +2,13 @@ package files
 
 import (
 	"archive/tar"
+	"context"
 	"fmt"
 	"io"
 	"path"
 	"time"
+
+	opentracing "github.com/opentracing/opentracing-go"
 )
 
 type TarWriter struct {
@@ -19,14 +22,14 @@ func NewTarWriter(w io.Writer) (*TarWriter, error) {
 	}, nil
 }
 
-func (w *TarWriter) writeDir(f Directory, fpath string) error {
+func (w *TarWriter) writeDir(ctx context.Context, f Directory, fpath string) error {
 	if err := writeDirHeader(w.TarW, fpath); err != nil {
 		return err
 	}
 
 	it := f.Entries()
 	for it.Next() {
-		if err := w.WriteFile(it.Node(), path.Join(fpath, it.Name())); err != nil {
+		if err := w.WriteFile(ctx, it.Node(), path.Join(fpath, it.Name())); err != nil {
 			return err
 		}
 	}
@@ -51,14 +54,21 @@ func (w *TarWriter) writeFile(f File, fpath string) error {
 }
 
 // WriteNode adds a node to the archive.
-func (w *TarWriter) WriteFile(nd Node, fpath string) error {
+func (w *TarWriter) WriteFile(ctx context.Context, nd Node, fpath string) error {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "tar write file")
+	defer span.Finish()
+	span.SetTag("path", fpath)
+
 	switch nd := nd.(type) {
 	case *Symlink:
+		span.SetTag("type", "symlink")
 		return writeSymlinkHeader(w.TarW, nd.Target, fpath)
 	case File:
+		span.SetTag("type", "file")
 		return w.writeFile(nd, fpath)
 	case Directory:
-		return w.writeDir(nd, fpath)
+		span.SetTag("type", "directory")
+		return w.writeDir(ctx, nd, fpath)
 	default:
 		return fmt.Errorf("file type %T is not supported", nd)
 	}
